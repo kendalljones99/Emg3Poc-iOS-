@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1;"/>
+        <title>Emg3 POC</title>
+
+        <style>
+        	body {
+        		background-color: white;
+        	}
+        	
+            #todo
+            {
+                width: 250px;
+            }
+
+            #todoList
+            {
+                margin: 0 0;
+                padding: 0 0;
+                list-style: none;
+                width: 300px;
+            }
+
+            #todoList li
+            {
+                background-color: lightblue;
+            }
+        </style>
+
+        <script>
+            var db;
+
+            function createDatabase() {
+                db = openDatabase("Emg3POC", "1.0", "Emg3POC Database that should sync when connection is active", "200000");
+            }
+
+            function createTable() {
+                db.transaction(function (t) {
+                    var sql = "CREATE TABLE IF NOT EXISTS Todo (ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, Details TEXT, CreatedDate DATETIME)";
+
+                    t.executeSql(sql, [], showRecords, handleError);
+                });
+            }
+
+            function addToDo() {
+            	var todoText = document.getElementById("todo").value;
+            	if (todoText != "") {
+	                db.transaction(function (t) {                    
+	                    var sql = "INSERT INTO Todo (Details, CreatedDate) VALUES (?, ?)";
+	
+	                    t.executeSql(sql, [todoText, Date.now()], fetchToDos, handleError);
+	                });
+                }
+            }
+
+            function fetchToDos() {
+                clearTodos();
+
+                db.transaction(function (t) {
+                    var sql = "SELECT * FROM Todo";
+
+                    t.executeSql(sql, [], showRecords, handleError);
+                });
+            }
+
+			function deleteAll() {
+				db.transaction(function (t) {
+                    var sql = "DELETE FROM Todo";
+
+                    t.executeSql(sql, [], clearTodos, handleError);
+                });
+			}
+			
+			function clearTodos() {
+				var todoList = document.getElementById("todoList");
+                while (todoList.firstChild) {
+                    todoList.removeChild(todoList.firstChild);
+                }
+			}
+			
+            function showRecords(t, rs) {
+                for (var i = 0; i < rs.rows.length; i++) {
+                    var todoText = rs.rows.item(i).Details;
+                    var todoList = document.getElementById("todoList");
+                    var todoItem = document.createElement("li");
+                    todoItem.appendChild(document.createTextNode(todoText));
+                    todoList.appendChild(todoItem);
+                }
+
+                document.getElementById("todo").value = "";
+            }
+
+            function handleError(t, e) {
+                alert(e.message);
+            }
+
+            function syncDatabase() {
+                var networkStatus = document.getElementById("networkStatus").innerHTML;
+
+                if (networkStatus == "Online") {
+                    db.transaction(function (t) {
+                        var sql = "SELECT * FROM Todo";
+
+                        t.executeSql(sql, [], sendDataToServer, handleError);
+                    });
+
+                } else {
+                    alert("You are currently not online. Please sync later when you have an internet connection.");
+                }
+            }
+
+            function sendDataToServer(t, rs) {
+                var postData = [];
+
+                for (var i = 0; i < rs.rows.length; i++) {
+                    var details = rs.rows.item(i).Details;
+                    var createdDate = rs.rows.item(i).CreatedDate;
+
+                    postData.push({ Details: details });
+                }
+
+				if (postData.length == 0) {
+					alert("Please add some todos before syncing");
+					return;
+				}
+				
+                $.ajax({
+                    url: 'http://emg3poc.sysengconnect.com/JSONHandler.ashx',
+                    type: 'POST',
+                    contentType: 'application/json; charset=utf-8',
+                    data: JSON.stringify(postData),
+                    success: function (result) {
+                        alert(result);
+                        if (result == "Data Saved") {
+                        	deleteAll();
+                        }
+                    }
+                });
+            }
+
+            window.onload = function () {
+                createDatabase();
+                createTable();
+                fetchToDos();
+            };
+        </script>
+    </head>
+    <body>
+        <div>
+            <h1>Emg3 POC</h1>
+            <span>Current network status is: </span><span id="networkStatus">Online</span>
+            <br /><br />
+            <div>Enter a TODO:</div>
+            <input type="text" id="todo" /><input type="button" onclick="addToDo();" value="Add ToDo" />
+            <br /><br />
+            <ul id="todoList">
+            </ul>
+            <br/><br/>
+            <input type="button" onclick="syncDatabase();" value="Sync with Server" />
+        </div>
+        <script type="text/javascript" src="cordova.js"></script>
+        <script type="text/javascript" src="js/jquery-2.0.3.min.js"></script>
+        <script type="text/javascript" src="js/index.js"></script>
+        <script type="text/javascript">
+            app.initialize();
+        </script>
+    </body>
+</html>
